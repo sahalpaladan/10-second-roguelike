@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>10-Second Roguelike</title>
-    <!-- Include Phaser 3 Game Engine Framework -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.86.0/phaser.min.js"></script>
+    <!-- Include Phaser 3 Game Engine Framework via secure Cloudflare CDN -->
+    <script src="https://cloudflare.com"></script>
     <style>
         body {
             margin: 0;
@@ -22,7 +22,6 @@
 <body>
 
 <script>
-    // Game Configuration
     const config = {
         type: Phaser.AUTO,
         width: 800,
@@ -41,7 +40,6 @@
 
     const game = new Phaser.Game(config);
 
-    // Global Game Variables
     let player;
     let cursors;
     let wasd;
@@ -53,17 +51,13 @@
     let score = 0;
     let isGameOver = false;
 
-    // UI Elements
     let timerText;
     let scoreText;
     let gameOverText;
 
-    function preload() {
-        // No external assets required! We generate shapes dynamically using Graphics objects.
-    }
+    function preload() {}
 
     function create() {
-        // Reset state variables for fresh games
         timeLeft = 10.0;
         score = 0;
         isGameOver = false;
@@ -80,11 +74,11 @@
         enemyGraphics.fillCircle(12, 12, 12);
         enemyGraphics.generateTexture('enemyTexture', 24, 24);
 
-        // 3. Instantiate Physics Player
+        // 3. Instantiate Physics Player directly in the center
         player = this.physics.add.sprite(400, 300, 'playerTexture');
         player.setCollideWorldBounds(true);
 
-        // 4. Set Up Controls (Arrow Keys + WASD support)
+        // 4. Set Up Controls
         cursors = this.input.keyboard.createCursorKeys();
         wasd = this.input.keyboard.addKeys({
             up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -96,18 +90,20 @@
         // 5. Enemy Group Handling
         enemies = this.physics.add.group();
 
-        // Spawn one initial enemy
-        spawnEnemy.call(this);
+        // Spawn a couple initial safe enemies at the boundaries
+        for(let i = 0; i < 2; i++) {
+            spawnEnemy.call(this);
+        }
 
-        // Spawn a new enemy every 1.5 seconds
+        // Spawn a new enemy every 1.2 seconds
         spawnTimer = this.time.addEvent({
-            delay: 1500,
+            delay: 1200,
             callback: spawnEnemy,
             callbackScope: this,
             loop: true
         });
 
-        // 6. Core Game Loop Countdown Tick (Every 100ms updates timer)
+        // 6. Core Game Loop Countdown Tick
         countdownTimer = this.time.addEvent({
             delay: 100,
             callback: () => {
@@ -129,18 +125,15 @@
         // 8. User Interface Display Text
         timerText = this.add.text(20, 20, 'TIME: 10.0s', { fontSize: '28px', fill: '#00ff66', fontStyle: 'bold' });
         scoreText = this.add.text(620, 20, 'SCORE: 0', { fontSize: '28px', fill: '#ffffff', fontStyle: 'bold' });
-        
-        gameOverText = this.add.text(400, 300, '', { fontSize: '40px', fill: '#ff3333', fontStyle: 'bold' }).setOrigin(0.5);
+        gameOverText = this.add.text(400, 300, '', { fontSize: '40px', fill: '#ff3333', fontStyle: 'bold', align: 'center' }).setOrigin(0.5);
     }
 
     function update() {
         if (isGameOver) return;
 
-        // Update HUD Values
         timerText.setText(`TIME: ${timeLeft.toFixed(1)}s`);
         scoreText.setText(`SCORE: ${score}`);
 
-        // Change timer color to red warning flash when low on time
         if (timeLeft <= 3.0) {
             timerText.setFill('#ff3333');
         } else {
@@ -148,7 +141,7 @@
         }
 
         // --- Player Movement Logic ---
-        const speed = 250;
+        const speed = 280;
         player.setVelocity(0);
 
         if (cursors.left.isDown || wasd.left.isDown) {
@@ -165,22 +158,24 @@
 
         // --- Enemy AI Tracking Logic ---
         enemies.getChildren().forEach((enemy) => {
-            // Calculate vector direction towards player coordinates
-            this.physics.moveToObject(enemy, player, 120);
+            // Enemies track towards the player at a steady, fair pace
+            this.physics.moveToObject(enemy, player, 110);
         });
     }
 
     function spawnEnemy() {
         if (isGameOver) return;
 
-        // Generate coordinates along random boundary edges to avoid spawning directly on top of player
         let x, y;
+        
+        // CRITICAL FIX: Force enemies to ONLY spawn strictly along the absolute outer edges of the map screen
+        // This ensures they never spawn on or near the center player
         if (Math.random() > 0.5) {
-            x = Math.random() > 0.5 ? 0 : 800;
-            y = Math.random() * 600;
+            x = Math.random() > 0.5 ? 20 : 780;
+            y = Phaser.Math.Between(20, 580);
         } else {
-            x = Math.random() * 800;
-            y = Math.random() > 0.5 ? 0 : 600;
+            x = Phaser.Math.Between(20, 780);
+            y = Math.random() > 0.5 ? 20 : 580;
         }
 
         let enemy = enemies.create(x, y, 'enemyTexture');
@@ -190,14 +185,11 @@
     function defeatEnemy(player, enemy) {
         if (isGameOver) return;
 
-        // Erase enemy instance from scene
         enemy.destroy();
-
-        // Apply reward loops
         score += 10;
-        timeLeft += 1.5; // Gain bonus time per kill!
         
-        // Cap the max timer bonus layout to keep the screen competitive
+        // Give bonus time, capped at a maximum of 10 seconds total
+        timeLeft += 1.2; 
         if (timeLeft > 10.0) {
             timeLeft = 10.0;
         }
@@ -212,7 +204,6 @@
 
         gameOverText.setText(`GAME OVER\nFinal Score: ${score}\n\nClick Screen to Restart`);
         
-        // Listen for user click to reboot scene sequence
         this.input.once('pointerdown', () => {
             this.scene.restart();
         });
