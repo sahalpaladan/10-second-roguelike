@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>10-Second Roguelike</title>
     <!-- Include Phaser 3 Game Engine Framework via secure Cloudflare CDN -->
-    <script src="https://cloudflare.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.86.0/phaser.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -22,6 +22,7 @@
 <body>
 
 <script>
+    // Game Configuration setup parameters
     const config = {
         type: Phaser.AUTO,
         width: 800,
@@ -40,6 +41,7 @@
 
     const game = new Phaser.Game(config);
 
+    // Engine Core Variables
     let player;
     let cursors;
     let wasd;
@@ -91,15 +93,13 @@
         enemies = this.physics.add.group();
 
         // Spawn a couple initial safe enemies at the boundaries
-        for(let i = 0; i < 2; i++) {
-            spawnEnemy.call(this);
-        }
+        spawnEnemyExternal(this);
+        spawnEnemyExternal(this);
 
         // Spawn a new enemy every 1.2 seconds
         spawnTimer = this.time.addEvent({
             delay: 1200,
-            callback: spawnEnemy,
-            callbackScope: this,
+            callback: () => spawnEnemyExternal(this),
             loop: true
         });
 
@@ -111,16 +111,15 @@
                     timeLeft -= 0.1;
                     if (timeLeft <= 0) {
                         timeLeft = 0;
-                        triggerGameOver.call(this);
+                        triggerGameOver(this);
                     }
                 }
             },
-            callbackScope: this,
             loop: true
         });
 
         // 7. Collision Logic: Player overlaps Enemy
-        this.physics.add.overlap(player, enemies, defeatEnemy, null, this);
+        this.physics.add.overlap(player, enemies, (p, e) => defeatEnemy(p, e), null, this);
 
         // 8. User Interface Display Text
         timerText = this.add.text(20, 20, 'TIME: 10.0s', { fontSize: '28px', fill: '#00ff66', fontStyle: 'bold' });
@@ -158,18 +157,16 @@
 
         // --- Enemy AI Tracking Logic ---
         enemies.getChildren().forEach((enemy) => {
-            // Enemies track towards the player at a steady, fair pace
             this.physics.moveToObject(enemy, player, 110);
         });
     }
 
-    function spawnEnemy() {
+    function spawnEnemyExternal(sceneContext) {
         if (isGameOver) return;
 
         let x, y;
         
-        // CRITICAL FIX: Force enemies to ONLY spawn strictly along the absolute outer edges of the map screen
-        // This ensures they never spawn on or near the center player
+        // Force enemies to ONLY spawn strictly along the absolute outer edges of the map screen
         if (Math.random() > 0.5) {
             x = Math.random() > 0.5 ? 20 : 780;
             y = Phaser.Math.Between(20, 580);
@@ -182,10 +179,10 @@
         enemy.setCollideWorldBounds(true);
     }
 
-    function defeatEnemy(player, enemy) {
+    function defeatEnemy(playerRef, enemyRef) {
         if (isGameOver) return;
 
-        enemy.destroy();
+        enemyRef.destroy();
         score += 10;
         
         // Give bonus time, capped at a maximum of 10 seconds total
@@ -195,7 +192,7 @@
         }
     }
 
-    function triggerGameOver() {
+    function triggerGameOver(sceneContext) {
         isGameOver = true;
         player.setVelocity(0);
         enemies.clear(true, true);
@@ -204,8 +201,8 @@
 
         gameOverText.setText(`GAME OVER\nFinal Score: ${score}\n\nClick Screen to Restart`);
         
-        this.input.once('pointerdown', () => {
-            this.scene.restart();
+        sceneContext.input.once('pointerdown', () => {
+            sceneContext.scene.restart();
         });
     }
 </script>
