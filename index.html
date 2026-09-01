@@ -3,214 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>10-Second Survival</title>
-    <script src="https://cloudflare.com"></script>
+    <title>10-Second Web Survival</title>
     <style>
         body {
             margin: 0;
-            background-color: #1a1a1a;
+            background-color: #111;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             overflow: hidden;
-            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            background-color: #222;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
 
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+
 <script>
-    const config = {
-        type: Phaser.AUTO,
-        width: 800,
-        height: 600,
-        backgroundColor: '#2d2d2d',
-        physics: {
-            default: 'arcade',
-            arcade: { debug: false }
-        },
-        scene: {
-            preload: preload,
-            create: create,
-            update: update
-        }
-    };
+    // --- NATIVE GAME ENGINE ENGINE BUILT DIRECTLY IN THE FILE ---
+    // Bypasses network CDN locks completely!
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
 
-    const game = new Phaser.Game(config);
-
-    let player;
-    let star;
-    let enemies;
-    let cursors;
-    let wasd;
-    let spawnTimer;
-    let countdownTimer;
+    // Game Core State Variables
+    let player = { x: 400, y: 300, size: 30, speed: 5 };
+    let star = { x: 200, y: 200, size: 10 };
+    let enemies = [];
     
-    let timeLeft = 10.0;
     let score = 0;
+    let timeLeft = 10.0;
     let isGameOver = false;
+    let enemySpawnCounter = 0;
+    let flashTimer = 0;
 
-    let timerText;
-    let scoreText;
-    let gameOverText;
+    // Track Keyboard Inputs State Map
+    const keys = {};
+    window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
-    function preload() {}
+    // Handle Restart Click Actions
+    canvas.addEventListener("click", () => {
+        if (isGameOver) {
+            player = { x: 400, y: 300, size: 30, speed: 5 };
+            enemies = [];
+            score = 0;
+            timeLeft = 10.0;
+            isGameOver = false;
+            moveStarRandomly();
+        }
+    });
 
-    function create() {
-        timeLeft = 10.0;
-        score = 0;
-        isGameOver = false;
+    function moveStarRandomly() {
+        star.x = Math.floor(Math.random() * 600) + 100;
+        star.y = Math.floor(Math.random() * 400) + 100;
+    }
 
-        // 1. Create Green Player Square
-        let playerGraphics = this.make.graphics({ x: 0, y: 0, add: false });
-        playerGraphics.fillStyle(0x00ff66, 1);
-        playerGraphics.fillRect(0, 0, 32, 32);
-        playerGraphics.generateTexture('playerTexture', 32, 32);
+    function spawnEnemy() {
+        let x = Math.random() > 0.5 ? 20 : 780;
+        let y = Math.random() * 560 + 20;
+        enemies.push({ x: x, y: y, radius: 11, speed: 2.2 });
+    }
 
-        // 2. Create Red Enemy Circle
-        let enemyGraphics = this.make.graphics({ x: 0, y: 0, add: false });
-        enemyGraphics.fillStyle(0xff3333, 1);
-        enemyGraphics.fillCircle(12, 12, 12);
-        enemyGraphics.generateTexture('enemyTexture', 24, 24);
+    // Set Up Initial State Loops
+    moveStarRandomly();
+    spawnEnemy();
 
-        // 3. Create Yellow Star Circle (The Objective!)
-        let starGraphics = this.make.graphics({ x: 0, y: 0, add: false });
-        starGraphics.fillStyle(0xffcc00, 1);
-        starGraphics.fillCircle(10, 10, 10);
-        starGraphics.generateTexture('starTexture', 20, 20);
-
-        // Spawn Player in Center
-        player = this.physics.add.sprite(400, 300, 'playerTexture');
-        player.setCollideWorldBounds(true);
-
-        // Spawn First Gold Star randomly
-        star = this.physics.add.sprite(Phaser.Math.Between(100, 700), Phaser.Math.Between(100, 500), 'starTexture');
-
-        // Setup Controls
-        cursors = this.input.keyboard.createCursorKeys();
-        wasd = this.input.keyboard.addKeys({
-            up: Phaser.Input.Keyboard.KeyCodes.W,
-            down: Phaser.Input.Keyboard.KeyCodes.S,
-            left: Phaser.Input.Keyboard.KeyCodes.A,
-            right: Phaser.Input.Keyboard.KeyCodes.D
-        });
-
-        enemies = this.physics.add.group();
-
-        // Spawn a chasing bubble every 1.5 seconds to build difficulty
-        spawnEnemyExternal(this);
-        spawnTimer = this.time.addEvent({
-            delay: 1500,
-            callback: () => spawnEnemyExternal(this),
-            loop: true
-        });
-
-        // Global Countdown Clock
-        countdownTimer = this.time.addEvent({
-            delay: 100,
-            callback: () => {
-                if (!isGameOver) {
-                    timeLeft -= 0.1;
-                    if (timeLeft <= 0) {
-                        timeLeft = 0;
-                        triggerGameOver(this);
-                    }
-                }
-            },
-            loop: true
-        });
-
-        // COLLISION 1: Player hits Gold Star (Good! Gives Points & Time)
-        this.physics.add.overlap(player, star, collectStar, null, this);
-
-        // COLLISION 2: Player hits Red Bubble (Bad! Hurts you)
-        this.physics.add.overlap(player, enemies, hitEnemy, null, this);
-
-        // Setup Interface Texts
-        timerText = this.add.text(20, 20, 'TIME: 10.0s', { fontSize: '28px', fill: '#00ff66', fontStyle: 'bold' });
-        scoreText = this.add.text(620, 20, 'SCORE: 0', { fontSize: '28px', fill: '#ffffff', fontStyle: 'bold' });
-        gameOverText = this.add.text(400, 300, '', { fontSize: '40px', fill: '#ff3333', fontStyle: 'bold', align: 'center' }).setOrigin(0.5);
+    // --- MAIN GAME CORE LOOP TICK ---
+    function gameLoop() {
+        update();
+        render();
+        requestAnimationFrame(gameLoop);
     }
 
     function update() {
         if (isGameOver) return;
 
-        timerText.setText(`TIME: ${timeLeft.toFixed(1)}s`);
-        scoreText.setText(`SCORE: ${score}`);
-
-        if (timeLeft <= 3.0) {
-            timerText.setFill('#ff3333');
-        } else {
-            timerText.setFill('#00ff66');
-        }
-
-        // Move Player via Keyboard Input
-        const speed = 300;
-        player.setVelocity(0);
-
-        if (cursors.left.isDown || wasd.left.isDown) player.setVelocityX(-speed);
-        else if (cursors.right.isDown || wasd.right.isDown) player.setVelocityX(speed);
-
-        if (cursors.up.isDown || wasd.up.isDown) player.setVelocityY(-speed);
-        else if (cursors.down.isDown || wasd.down.isDown) player.setVelocityY(speed);
-
-        // Enemy AI Homing System
-        enemies.getChildren().forEach((enemy) => {
-            this.physics.moveToObject(enemy, player, 120);
-        });
-    }
-
-    function spawnEnemyExternal(sceneContext) {
-        if (isGameOver) return;
-        let x = Math.random() > 0.5 ? 30 : 770;
-        let y = Phaser.Math.Between(30, 570);
-        let enemy = enemies.create(x, y, 'enemyTexture');
-        enemy.setCollideWorldBounds(true);
-    }
-
-    // Triggered when player manually runs over a Yellow Star
-    function collectStar(playerRef, starRef) {
-        if (isGameOver) return;
-        
-        score += 10;
-        timeLeft += 2.5; // Gain bonus survival time!
-        if (timeLeft > 10.0) timeLeft = 10.0;
-
-        // Teleport the star to a new random location on screen
-        starRef.setPosition(Phaser.Math.Between(100, 700), Phaser.Math.Between(100, 500));
-    }
-
-    // Triggered if a Red Bubble catches the player
-    function hitEnemy(playerRef, enemyRef) {
-        if (isGameOver) return;
-
-        enemyRef.destroy(); // Remove the bubble that hit you
-        timeLeft -= 2.0;    // Penalty: Lose 2 seconds instantly!
-        
-        // Visual indicator flash effect
-        playerRef.setTint(0xff0000);
-        this.time.delayedCall(150, () => playerRef.clearTint());
-
+        // 1. Handle Countdown Clock Timers
+        timeLeft -= 1 / 60; // Assumes 60 FPS refresh cycles
         if (timeLeft <= 0) {
             timeLeft = 0;
-            triggerGameOver(this);
+            isGameOver = true;
+        }
+
+        if (flashTimer > 0) flashTimer--;
+
+        // 2. Keyboard Control Navigation Mappings (WASD + Arrow Keys Supported)
+        if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
+        if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
+        if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
+        if (keys["d"] || keys["arrowright"]) player.x += player.speed;
+
+        // Keep Player bound inside canvas frame limits
+        if (player.x < 0) player.x = 0;
+        if (player.x > canvas.width - player.size) player.x = canvas.width - player.size;
+        if (player.y < 0) player.y = 0;
+        if (player.y > canvas.height - player.size) player.y = canvas.height - player.size;
+
+        // 3. Enemy Spawn Intermission Clock Logic
+        enemySpawnCounter++;
+        if (enemySpawnCounter >= 90) { // Spawns an enemy roughly every 1.5 seconds
+            spawnEnemy();
+            enemySpawnCounter = 0;
+        }
+
+        // 4. Enemy Track Logic Engine
+        enemies.forEach(enemy => {
+            let targetX = player.x + player.size / 2;
+            let targetY = player.y + player.size / 2;
+            let dx = targetX - enemy.x;
+            let dy = targetY - enemy.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0) {
+                enemy.x += (dx / distance) * enemy.speed;
+                enemy.y += (dy / distance) * enemy.speed;
+            }
+
+            // COLLISION: Red Bubble hits Player Box (Drains time!)
+            if (enemy.x > player.x && enemy.x < player.x + player.size &&
+                enemy.y > player.y && enemy.y < player.y + player.size) {
+                
+                timeLeft -= 2.0; // Remove 2 seconds penalty layout
+                flashTimer = 10; // Trigger Screen Flash Red layout
+                
+                // Explode out the enemy from active array collection properties
+                let index = enemies.indexOf(enemy);
+                if (index > -1) enemies.splice(index, 1);
+
+                if (timeLeft <= 0) {
+                    timeLeft = 0;
+                    isGameOver = true;
+                }
+            }
+        });
+
+        // 5. COLLISION: Player Box grabs Gold Star (Gives Score + Time)
+        let playerCenterX = player.x + player.size / 2;
+        let playerCenterY = player.y + player.size / 2;
+        let sDx = playerCenterX - star.x;
+        let sDy = playerCenterY - star.y;
+        let sDist = Math.sqrt(sDx * sDx + sDy * sDy);
+
+        if (sDist < player.size / 2 + star.size) {
+            score += 10;
+            timeLeft += 2.5; // Award bonus time allocation
+            if (timeLeft > 10.0) timeLeft = 10.0;
+            moveStarRandomly();
         }
     }
 
-    function triggerGameOver(sceneContext) {
-        isGameOver = true;
-        player.setVelocity(0);
-        enemies.clear(true, true);
-        spawnTimer.destroy();
-        countdownTimer.destroy();
+    function render() {
+        // Clear Frame
+        ctx.fillStyle = flashTimer > 0 ? "#4a1111" : "#2d2d2d";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        gameOverText.setText(`GAME OVER\nFinal Score: ${score}\n\nClick Screen to Restart`);
-        
-        sceneContext.input.once('pointerdown', () => {
-            sceneContext.scene.restart();
+        // Draw Player (Neon Green Rect Layout)
+        ctx.fillStyle = "#00ff66";
+        ctx.fillRect(player.x, player.y, player.size, player.size);
+
+        // Draw Gold Star Target Objective
+        ctx.fillStyle = "#ffcc00";
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw Enemy Homing Swarm Bubbles
+        ctx.fillStyle = "#ff3333";
+        enemies.forEach(enemy => {
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+            ctx.fill();
         });
+
+        // Heads Up Dashboard User Interface Displays text setups
+        ctx.font = "bold 24px Arial";
+        ctx.fillStyle = timeLeft <= 3.0 ? "#ff3333" : "#00ff66";
+        ctx.fillText(`TIME: ${Math.max(0, timeLeft).toFixed(1)}s`, 20, 40);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`SCORE: ${score}`, 630, 40);
+
+        // Game Over Panel Overlays Display Engine configurations
+        if (isGameOver) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = "bold 42px Arial";
+            ctx.fillStyle = "#ff3333";
+            ctx.textAlign = "center";
+            ctx.fillText("GAME OVER", 400, 240);
+
+            ctx.font = "24px Arial";
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(`Final Score: ${score}`, 400, 290);
+            ctx.fillStyle = "#00ff66";
+            ctx.fillText("Click Canvas Screen Window to Restart", 400, 360);
+            ctx.textAlign = "left"; // reset context
+        }
     }
+
+    // Launch Game System Init Sequence
+    gameLoop();
 </script>
 
 </body>
