@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>10-Second Roguelike</title>
-    <!-- Include Phaser 3 Game Engine Framework via secure Cloudflare CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.86.0/phaser.min.js"></script>
+    <title>10-Second Survival</title>
+    <script src="https://cloudflare.com"></script>
     <style>
         body {
             margin: 0;
@@ -22,7 +21,6 @@
 <body>
 
 <script>
-    // Game Configuration setup parameters
     const config = {
         type: Phaser.AUTO,
         width: 800,
@@ -41,11 +39,11 @@
 
     const game = new Phaser.Game(config);
 
-    // Engine Core Variables
     let player;
+    let star;
+    let enemies;
     let cursors;
     let wasd;
-    let enemies;
     let spawnTimer;
     let countdownTimer;
     
@@ -64,23 +62,32 @@
         score = 0;
         isGameOver = false;
 
-        // 1. Create Player Visual Asset (32x32 Neon Green Square)
+        // 1. Create Green Player Square
         let playerGraphics = this.make.graphics({ x: 0, y: 0, add: false });
         playerGraphics.fillStyle(0x00ff66, 1);
         playerGraphics.fillRect(0, 0, 32, 32);
         playerGraphics.generateTexture('playerTexture', 32, 32);
 
-        // 2. Create Enemy Visual Asset (24x24 Crimson Red Circle)
+        // 2. Create Red Enemy Circle
         let enemyGraphics = this.make.graphics({ x: 0, y: 0, add: false });
         enemyGraphics.fillStyle(0xff3333, 1);
         enemyGraphics.fillCircle(12, 12, 12);
         enemyGraphics.generateTexture('enemyTexture', 24, 24);
 
-        // 3. Instantiate Physics Player directly in the center
+        // 3. Create Yellow Star Circle (The Objective!)
+        let starGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        starGraphics.fillStyle(0xffcc00, 1);
+        starGraphics.fillCircle(10, 10, 10);
+        starGraphics.generateTexture('starTexture', 20, 20);
+
+        // Spawn Player in Center
         player = this.physics.add.sprite(400, 300, 'playerTexture');
         player.setCollideWorldBounds(true);
 
-        // 4. Set Up Controls
+        // Spawn First Gold Star randomly
+        star = this.physics.add.sprite(Phaser.Math.Between(100, 700), Phaser.Math.Between(100, 500), 'starTexture');
+
+        // Setup Controls
         cursors = this.input.keyboard.createCursorKeys();
         wasd = this.input.keyboard.addKeys({
             up: Phaser.Input.Keyboard.KeyCodes.W,
@@ -89,21 +96,17 @@
             right: Phaser.Input.Keyboard.KeyCodes.D
         });
 
-        // 5. Enemy Group Handling
         enemies = this.physics.add.group();
 
-        // Spawn a couple initial safe enemies at the boundaries
+        // Spawn a chasing bubble every 1.5 seconds to build difficulty
         spawnEnemyExternal(this);
-        spawnEnemyExternal(this);
-
-        // Spawn a new enemy every 1.2 seconds
         spawnTimer = this.time.addEvent({
-            delay: 1200,
+            delay: 1500,
             callback: () => spawnEnemyExternal(this),
             loop: true
         });
 
-        // 6. Core Game Loop Countdown Tick
+        // Global Countdown Clock
         countdownTimer = this.time.addEvent({
             delay: 100,
             callback: () => {
@@ -118,10 +121,13 @@
             loop: true
         });
 
-        // 7. Collision Logic: Player overlaps Enemy
-        this.physics.add.overlap(player, enemies, (p, e) => defeatEnemy(p, e), null, this);
+        // COLLISION 1: Player hits Gold Star (Good! Gives Points & Time)
+        this.physics.add.overlap(player, star, collectStar, null, this);
 
-        // 8. User Interface Display Text
+        // COLLISION 2: Player hits Red Bubble (Bad! Hurts you)
+        this.physics.add.overlap(player, enemies, hitEnemy, null, this);
+
+        // Setup Interface Texts
         timerText = this.add.text(20, 20, 'TIME: 10.0s', { fontSize: '28px', fill: '#00ff66', fontStyle: 'bold' });
         scoreText = this.add.text(620, 20, 'SCORE: 0', { fontSize: '28px', fill: '#ffffff', fontStyle: 'bold' });
         gameOverText = this.add.text(400, 300, '', { fontSize: '40px', fill: '#ff3333', fontStyle: 'bold', align: 'center' }).setOrigin(0.5);
@@ -139,56 +145,56 @@
             timerText.setFill('#00ff66');
         }
 
-        // --- Player Movement Logic ---
-        const speed = 280;
+        // Move Player via Keyboard Input
+        const speed = 300;
         player.setVelocity(0);
 
-        if (cursors.left.isDown || wasd.left.isDown) {
-            player.setVelocityX(-speed);
-        } else if (cursors.right.isDown || wasd.right.isDown) {
-            player.setVelocityX(speed);
-        }
+        if (cursors.left.isDown || wasd.left.isDown) player.setVelocityX(-speed);
+        else if (cursors.right.isDown || wasd.right.isDown) player.setVelocityX(speed);
 
-        if (cursors.up.isDown || wasd.up.isDown) {
-            player.setVelocityY(-speed);
-        } else if (cursors.down.isDown || wasd.down.isDown) {
-            player.setVelocityY(speed);
-        }
+        if (cursors.up.isDown || wasd.up.isDown) player.setVelocityY(-speed);
+        else if (cursors.down.isDown || wasd.down.isDown) player.setVelocityY(speed);
 
-        // --- Enemy AI Tracking Logic ---
+        // Enemy AI Homing System
         enemies.getChildren().forEach((enemy) => {
-            this.physics.moveToObject(enemy, player, 110);
+            this.physics.moveToObject(enemy, player, 120);
         });
     }
 
     function spawnEnemyExternal(sceneContext) {
         if (isGameOver) return;
-
-        let x, y;
-        
-        // Force enemies to ONLY spawn strictly along the absolute outer edges of the map screen
-        if (Math.random() > 0.5) {
-            x = Math.random() > 0.5 ? 20 : 780;
-            y = Phaser.Math.Between(20, 580);
-        } else {
-            x = Phaser.Math.Between(20, 780);
-            y = Math.random() > 0.5 ? 20 : 580;
-        }
-
+        let x = Math.random() > 0.5 ? 30 : 770;
+        let y = Phaser.Math.Between(30, 570);
         let enemy = enemies.create(x, y, 'enemyTexture');
         enemy.setCollideWorldBounds(true);
     }
 
-    function defeatEnemy(playerRef, enemyRef) {
+    // Triggered when player manually runs over a Yellow Star
+    function collectStar(playerRef, starRef) {
+        if (isGameOver) return;
+        
+        score += 10;
+        timeLeft += 2.5; // Gain bonus survival time!
+        if (timeLeft > 10.0) timeLeft = 10.0;
+
+        // Teleport the star to a new random location on screen
+        starRef.setPosition(Phaser.Math.Between(100, 700), Phaser.Math.Between(100, 500));
+    }
+
+    // Triggered if a Red Bubble catches the player
+    function hitEnemy(playerRef, enemyRef) {
         if (isGameOver) return;
 
-        enemyRef.destroy();
-        score += 10;
+        enemyRef.destroy(); // Remove the bubble that hit you
+        timeLeft -= 2.0;    // Penalty: Lose 2 seconds instantly!
         
-        // Give bonus time, capped at a maximum of 10 seconds total
-        timeLeft += 1.2; 
-        if (timeLeft > 10.0) {
-            timeLeft = 10.0;
+        // Visual indicator flash effect
+        playerRef.setTint(0xff0000);
+        this.time.delayedCall(150, () => playerRef.clearTint());
+
+        if (timeLeft <= 0) {
+            timeLeft = 0;
+            triggerGameOver(this);
         }
     }
 
